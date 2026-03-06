@@ -1,5 +1,7 @@
 # Hole Covers Generator
 
+**Live browser tool:** [Hole Covers STL Generator](https://michalmietlinski.github.io/hole-generator/)
+
 This is a new standalone project for generating printable hole covers.
 
 ## Goal

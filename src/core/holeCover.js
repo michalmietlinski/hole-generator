@@ -240,6 +240,26 @@ export function validateHoleCoverParams(rawParams) {
   // Validate that inlet wall thickness can exist inside the fit envelope.
   insetDimensions(innerShape, innerDimensions, inletThickness, "inletThickness");
 
+  const coverEnabled = Boolean(rawParams?.cover?.enabled);
+  const coverKindRaw = coverEnabled ? String(rawParams?.cover?.kind || "whole").toLowerCase() : "none";
+  const coverKind = coverKindRaw === "whole" ? "whole" : "none";
+  const coverCutoutDegrees = coverEnabled
+    ? toFiniteNumber(rawParams?.cover?.cutoutDegrees ?? 0, "cover.cutoutDegrees")
+    : 0;
+
+  const coverDiscClearance = coverEnabled
+    ? toFiniteNumber(rawParams?.cover?.discClearance ?? 0.2, "cover.discClearance")
+    : 0.2;
+
+  if (coverEnabled) {
+    if (coverCutoutDegrees < 0 || coverCutoutDegrees > 90) {
+      throw new Error("cover.cutoutDegrees must be between 0 and 90.");
+    }
+    if (coverDiscClearance < 0) {
+      throw new Error("cover.discClearance must be >= 0.");
+    }
+  }
+
   return {
     outerShape,
     innerShape,
@@ -258,6 +278,12 @@ export function validateHoleCoverParams(rawParams) {
       enabled: inletLeadInEnabled,
       height: inletLeadInHeight,
       offset: inletLeadInOffset
+    },
+    cover: {
+      enabled: coverEnabled,
+      kind: coverKind,
+      cutoutDegrees: coverCutoutDegrees,
+      discClearance: coverDiscClearance
     }
   };
 }
@@ -280,6 +306,84 @@ export function buildHoleCoverGeometry(rawParams) {
   if (voidTop > voidBottom) {
     const innerVoid = buildPrism(validated.innerShape, inletInnerDimensions, voidBottom, voidTop);
     geometry = subtract(geometry, innerVoid);
+  }
+
+  // Optional separate cover features (CLI-only for now), circular covers only.
+  if (
+    validated.cover?.enabled &&
+    validated.cover.kind === "whole" &&
+    validated.outerShape === SHAPE_CIRCLE &&
+    validated.innerShape === SHAPE_CIRCLE &&
+    validated.coverMode === MODE_HOLLOW
+  ) {
+    const voidInnerRadius = inletInnerDimensions.diameter / 2;
+    const ringThickness = 2;
+    const ringOuterRadius = voidInnerRadius;
+    const ringInnerRadiusBottom = ringOuterRadius - ringThickness;
+    if (ringInnerRadiusBottom <= 0) {
+      throw new Error("cover ring radius invalid; inner diameter too small for 2mm ring.");
+    }
+
+    const chamferHeight = validated.outerChamfer.enabled
+      ? validated.outerChamfer.height
+      : Math.min(2, validated.thickness);
+    const ringHeight = chamferHeight;
+
+    // Ring lives entirely inside the hollow inlet, just below the flat:
+    // top at z = 0 (flush with cover), bottom at z = -ringHeight.
+    const ringTopZ = 0;
+    const ringBottomZ = -ringHeight;
+
+    // Outer surface: cylinder at constant radius = voidInnerRadius.
+    const ringOuterDims = { diameter: ringOuterRadius * 2 };
+    const ringOuterSolid = buildPrism(SHAPE_CIRCLE, ringOuterDims, ringBottomZ, ringTopZ);
+
+    // Inner surface: frustum from radius = ringOuterRadius at top down to (ringOuterRadius - 2mm) at bottom.
+    const ringInnerTopDims = { diameter: ringOuterRadius * 2 };
+    const ringInnerBottomDims = { diameter: ringInnerRadiusBottom * 2 };
+    const ringInnerFrustum = buildFrustum(
+      SHAPE_CIRCLE,
+      ringInnerBottomDims,
+      ringInnerTopDims,
+      ringBottomZ,
+      ringTopZ
+    );
+
+    const coverRing = subtract(ringOuterSolid, ringInnerFrustum);
+
+    // Cover disc: printed as a separate solid above the ring, with inverse chamfer
+    // Move it up by 30mm in Z so it slices as a clearly separate part.
+    const discBottomZ = ringTopZ + 30;
+    const discTopZ = discBottomZ + chamferHeight;
+    const discClearance = validated.cover.discClearance ?? 0.2;
+    const discOuterRadius = ringOuterRadius - discClearance;
+    const discInnerRadius = discOuterRadius - ringThickness;
+    if (discInnerRadius <= 0) {
+      throw new Error("cover disc geometry invalid; disc radius too small.");
+    }
+
+    const discBottomDims = { diameter: discInnerRadius * 2 };
+    const discTopDims = { diameter: discOuterRadius * 2 };
+    let coverDisc = buildFrustum(
+      SHAPE_CIRCLE,
+      discBottomDims,
+      discTopDims,
+      discBottomZ,
+      discTopZ
+    );
+
+    // Optional simple 90° quadrant cut-out from the disc when cutoutDegrees = 90.
+    if (validated.cover.cutoutDegrees >= 89.9) {
+      const cutSize = discOuterRadius * 2 + 2;
+      const cutHeight = discTopZ - discBottomZ + 2;
+      const cutBlock = cuboid({
+        size: [cutSize, cutSize, cutHeight],
+        center: [cutSize / 4, cutSize / 4, discBottomZ + cutHeight / 2]
+      });
+      coverDisc = subtract(coverDisc, cutBlock);
+    }
+
+    geometry = union(geometry, coverRing, coverDisc);
   }
 
   return {
