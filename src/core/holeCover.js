@@ -2,7 +2,7 @@ import modeling from "@jscad/modeling";
 import stlSerializer from "@jscad/stl-serializer";
 
 const { booleans, hulls, primitives } = modeling;
-const { subtract, union } = booleans;
+const { intersect, subtract, union } = booleans;
 const { hull } = hulls;
 const { cuboid, cylinder } = primitives;
 const { serialize } = stlSerializer;
@@ -372,15 +372,28 @@ export function buildHoleCoverGeometry(rawParams) {
       discTopZ
     );
 
-    // Optional simple 90° quadrant cut-out from the disc when cutoutDegrees = 90.
+    // Optional 90° sector cut-out from the centre of the disc (remove 1/4 of the disc).
     if (validated.cover.cutoutDegrees >= 89.9) {
-      const cutSize = discOuterRadius * 2 + 2;
-      const cutHeight = discTopZ - discBottomZ + 2;
-      const cutBlock = cuboid({
-        size: [cutSize, cutSize, cutHeight],
-        center: [cutSize / 4, cutSize / 4, discBottomZ + cutHeight / 2]
+      const discZCenter = (discBottomZ + discTopZ) / 2;
+      const discHeight = discTopZ - discBottomZ;
+      const big = discOuterRadius * 2 + 10;
+
+      const wedgeCylinder = cylinder({
+        radius: discOuterRadius + 2,
+        height: discHeight + 2,
+        segments: 32,
+        center: [0, 0, discZCenter]
       });
-      coverDisc = subtract(coverDisc, cutBlock);
+      const halfSpaceX = cuboid({
+        size: [big, big * 2, discHeight + 4],
+        center: [big / 2, 0, discZCenter]
+      });
+      const halfSpaceY = cuboid({
+        size: [big * 2, big, discHeight + 4],
+        center: [0, big / 2, discZCenter]
+      });
+      const wedge = intersect(wedgeCylinder, halfSpaceX, halfSpaceY);
+      coverDisc = subtract(coverDisc, wedge);
     }
 
     geometry = union(geometry, coverRing, coverDisc);
