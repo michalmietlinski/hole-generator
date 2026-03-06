@@ -1,0 +1,26 @@
+{
+  "shape": {
+    "outer": "circle",
+    "inner": "circle"
+  },
+  "outerDimensions": {
+    "diameter": 40
+  },
+  "innerDimensions": {
+    "diameter": 34.6
+  },
+  "thickness": 2,
+  "inletHeight": 18,
+  "inletThickness": 2,
+  "inletLeadIn": {
+    "enabled": true,
+    "height": 3,
+    "offset": 0.8
+  },
+  "coverMode": "hollow",
+  "outerChamfer": {
+    "enabled": true,
+    "height": 2,
+    "offset": 1
+  }
+}
