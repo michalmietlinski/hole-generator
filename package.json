@@ -7,6 +7,7 @@
     "generate": "node src/cli/index.js",
     "generate-set": "node src/cli/generateSet.js",
     "generate-set-cover": "node src/cli/generateSetCover.js",
+    "generate-pipe-covers": "node src/cli/generatePipeCovers.js",
     "build-web": "node tools/build_web.js"
   },
   "dependencies": {
