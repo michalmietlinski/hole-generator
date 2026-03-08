@@ -6,6 +6,7 @@
   "scripts": {
     "generate": "node src/cli/index.js",
     "generate-set": "node src/cli/generateSet.js",
+    "generate-set-cover": "node src/cli/generateSetCover.js",
     "build-web": "node tools/build_web.js"
   },
   "dependencies": {
